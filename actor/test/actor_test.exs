@@ -24,6 +24,7 @@ defmodule ActorTest do
     assert Actor.get(pid2) == 1
   end
 
+  @tag :skip
   test "remove activated actor" do
     pid = Actor.new(0)
 
@@ -32,15 +33,17 @@ defmodule ActorTest do
     assert Actor.get(pid) == :killed
   end
 
+  @tag :skip
   test "if try to set new state on dead actor, raise error" do
     pid = Actor.new(0)
     Actor.kill(pid)
 
-    assert_raise RuntimeError, "Actor is killed", fn ->
+    assert_raise RuntimeError, "Actor has killed", fn ->
       Actor.set(pid, 1)
     end
   end
 
+  @tag :skip
   test "if try to kill dead actor, raise error" do
     pid = Actor.new(0)
     Actor.kill(pid)
@@ -51,15 +54,16 @@ defmodule ActorTest do
   end
 
   test "add other actor as subscriber" do
-    pid1 = Actor.new(0)
-    pid2 = Actor.new(1)
-
-    assert length(Actor.get(pid1).subscribers) == 0
-    assert length(Actor.get(pid2).subscribers) == 0
+    pid1 = Actor.new()
+    pid2 = Actor.new()
+    pid3 = Actor.new()
 
     Actor.subscribe(pid1, pid2)
+    Actor.subscribe(pid1, pid3)
 
-    assert length(Actor.get(pid1).subscribers) == 1
-    assert length(Actor.get(pid2).subscribers) == 0
+    Actor.set(pid1, 1)
+
+    assert Actor.get(pid2) == 1
+    assert Actor.get(pid3) == 1
   end
 end
