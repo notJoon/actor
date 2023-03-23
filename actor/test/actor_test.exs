@@ -1,28 +1,65 @@
 defmodule ActorTest do
   use ExUnit.Case
-  doctest Actor
 
-  test "start and stop actor" do
-    pid = Actor.start_link(0)
-    assert Actor.stop(pid, :normal) == :ok
-  end
-
-  test "get and set actor state" do
-    pid = Actor.start_link(0)
+  test "generate new actor" do
+    pid = Actor.new(0)
     assert Actor.get(pid) == 0
-    assert Actor.set(pid, 1) == :ok
-    assert Actor.get(pid) == 1
   end
 
-  test "generate multiple actors and stop them" do
-    actors = Enum.map(1..10, fn _ -> Actor.start_link(0) end)
-    Enum.each(actors, fn pid -> Actor.stop(pid, :normal) end)
+  test "set new state" do
+    pid = Actor.new(0)
+
+    new_state = Actor.set(pid, 1)
+    assert new_state == 1
+
+    new_state = Actor.set(pid, 2)
+    assert new_state == 2
   end
 
-  test "generate multiple actors and set their states" do
-    actors = Enum.map(1..10, fn _ -> Actor.start_link(0) end)
-    Enum.each(actors, fn pid -> Actor.set(pid, 1) end)
-    Enum.each(actors, fn pid -> assert Actor.get(pid) == 1 end)
-    Enum.each(actors, fn pid -> Actor.stop(pid, :normal) end)
+  test "generate multiple actors" do
+    pid1 = Actor.new(0)
+    pid2 = Actor.new(1)
+
+    assert Actor.get(pid1) == 0
+    assert Actor.get(pid2) == 1
+  end
+
+  test "remove activated actor" do
+    pid = Actor.new(0)
+
+    assert Actor.get(pid) == 0
+    Actor.kill(pid)
+    assert Actor.get(pid) == :killed
+  end
+
+  test "if try to set new state on dead actor, raise error" do
+    pid = Actor.new(0)
+    Actor.kill(pid)
+
+    assert_raise RuntimeError, "Actor is killed", fn ->
+      Actor.set(pid, 1)
+    end
+  end
+
+  test "if try to kill dead actor, raise error" do
+    pid = Actor.new(0)
+    Actor.kill(pid)
+
+    assert_raise RuntimeError, "Actor has killed before", fn ->
+      Actor.kill(pid)
+    end
+  end
+
+  test "add other actor as subscriber" do
+    pid1 = Actor.new(0)
+    pid2 = Actor.new(1)
+
+    assert length(Actor.get(pid1).subscribers) == 0
+    assert length(Actor.get(pid2).subscribers) == 0
+
+    Actor.subscribe(pid1, pid2)
+
+    assert length(Actor.get(pid1).subscribers) == 1
+    assert length(Actor.get(pid2).subscribers) == 0
   end
 end
