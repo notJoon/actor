@@ -26,15 +26,8 @@ defmodule Actor do
         loop(%{state | subscribers: subscribers})
 
       {:message, value} ->
-        if MapSet.size(state[:subscribers]) == 0 do
-          message = :queue.in(value, state[:mailbox])
-          loop(%{state | mailbox: message})
-        else
-          Enum.each(state[:subscribers], fn pid ->
-            send(pid, value)
-          end)
-          loop(state)
-        end
+        should_broadcast(state, value)
+        check_message(state)
 
       _ ->
         loop(state)
@@ -62,5 +55,39 @@ defmodule Actor do
   def subscribers(pid) do
     state = Process.get(pid, :state)
     state[:subscribers]
+  end
+
+  defp is_empty_mailbox?(state) do
+    state[:mailbox] |> :queue.is_empty()
+  end
+
+  defp has_subscribers?(state) do
+    state[:subscribers] |> MapSet.size() != 0
+  end
+
+  defp propagate_message(state, value) do
+    Enum.each(state[:subscribers], fn pid ->
+      send(pid, value)
+    end)
+    loop(state)
+  end
+
+  defp should_broadcast(state, value) do
+    if has_subscribers?(state) do
+      propagate_message(state, value)
+    else
+      msg = :queue.in(value, state[:mailbox])
+      loop(%{state | mailbox: msg})
+    end
+  end
+
+  defp check_message(state) do
+    if !is_empty_mailbox?(state) do
+      {msg, new_mailbox} = :queue.out(state[:mailbox])
+      send(self(), {:message, msg})
+      loop(%{state | mailbox: new_mailbox})
+    else
+      loop(state)
+    end
   end
 end
