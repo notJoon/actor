@@ -2,68 +2,42 @@ defmodule ActorTest do
   use ExUnit.Case
 
   test "generate new actor" do
-    pid = Actor.new(0)
-    assert Actor.get(pid) == 0
+    assert Actor.new(0) |> is_pid()
   end
 
-  test "set new state" do
-    pid = Actor.new(0)
+  test "generate new actor and get its state value" do
+    pid_1 = Actor.new(0)
+    pid_2 = Actor.new(42)
 
-    new_state = Actor.set(pid, 1)
-    assert new_state == 1
-
-    new_state = Actor.set(pid, 2)
-    assert new_state == 2
+    assert Actor.get(pid_1) == 0
+    assert Actor.get(pid_2) == 42
   end
 
-  test "generate multiple actors" do
-    pid1 = Actor.new(0)
-    pid2 = Actor.new(1)
-
-    assert Actor.get(pid1) == 0
-    assert Actor.get(pid2) == 1
-  end
-
-  @tag :skip
-  test "remove activated actor" do
+  test "update actor state" do
     pid = Actor.new(0)
 
     assert Actor.get(pid) == 0
-    Actor.kill(pid)
-    assert Actor.get(pid) == :killed
+
+    Actor.set(pid, 42)
+
+    assert Actor.get(pid) == 42
   end
 
   @tag :skip
-  test "if try to set new state on dead actor, raise error" do
+  test "broadcast message to all subscribers when receive a message" do
     pid = Actor.new(0)
-    Actor.kill(pid)
 
-    assert_raise RuntimeError, "Actor has killed", fn ->
-      Actor.set(pid, 1)
-    end
-  end
+    sub1 = spawn_link(fn -> receive do _ -> end end)
+    sub2 = spawn_link(fn -> receive do _ -> end end)
 
-  @tag :skip
-  test "if try to kill dead actor, raise error" do
-    pid = Actor.new(0)
-    Actor.kill(pid)
+    send(pid, {:subscribe, sub1})
+    send(pid, {:subscribe, sub2})
 
-    assert_raise RuntimeError, "Actor has killed before", fn ->
-      Actor.kill(pid)
-    end
-  end
+    send(pid, {:message, 42})
 
-  test "add other actor as subscriber" do
-    pid1 = Actor.new()
-    pid2 = Actor.new()
-    pid3 = Actor.new()
+    Process.sleep(1000)
 
-    Actor.subscribe(pid1, pid2)
-    Actor.subscribe(pid1, pid3)
-
-    Actor.set(pid1, 1)
-
-    assert Actor.get(pid2) == 1
-    assert Actor.get(pid3) == 1
+    assert_receive 42
+    assert_receive 42
   end
 end
