@@ -1,93 +1,97 @@
 defmodule Actor do
-  defstruct state: 0, mailbox: :queue.new(), subscribers: MapSet.new()
+  defstruct value: nil, mailbox: :queue.new(), subscribers: MapSet.new()
 
-  @spec new(state :: integer) :: pid
-  def new(state) do
-    spawn_link(__MODULE__, :loop, [%{state: state, mailbox: :queue.new(), subscribers: MapSet.new()}])
+  @ops [:add, :sub, :mul, :div]
+  @batch 5
+
+  def new(args, batch_size \\ @batch) do
+    init_state = %__MODULE__{value: args[:value]}
+    spawn_link(fn -> loop(self(), init_state, batch_size) end)
   end
 
-  @spec loop(state :: integer) :: no_return
-  def loop(state) do
-    receive do
-      {:get, pid} ->
-        send(pid, %{state | state: state[:state]})
-        loop(%{state | state: state})
-
-      {:set, pid, new_state} ->
-        send(pid, new_state)
-        loop(%{state | state: new_state})
-
-      {:subscribe, pid} ->
-        subscribers = MapSet.put(state[:subscribers], pid)
-        loop(%{state | subscribers: subscribers})
-
-      {:unsubscribe, pid} ->
-        subscribers = MapSet.delete(state[:subscribers], pid)
-        loop(%{state | subscribers: subscribers})
-
-      {:message, value} ->
-        should_broadcast(state, value)
-        check_message(state)
-
-      _ ->
-        loop(state)
-    end
-  end
-
-  @spec get(pid :: pid) :: integer
   def get(pid) do
-    pid |> send({:get, self()})
+    pid.value
+  end
 
-    receive do
-      state -> state[:state]
+  def set(pid, new_value) do
+    %Actor{pid | value: new_value}
+  end
+
+  def loop(pid, state, batch_size) do
+    new_state =
+      receive do
+        message ->
+          stored_state = store_message(state, message)
+
+          if :queue.len(stored_state.mailbox) >= batch_size do
+            Process.send(pid, :process_mailbox, [])
+          end
+
+          stored_state
+      end
+
+    loop(pid, new_state, batch_size)
+  end
+
+  def handle_message(state) do
+    case :queue.out(state.mailbox) do
+      {:empty, _} ->
+        state
+
+      {{:value, message}, new_mailbox} ->
+        new_state =
+          case message do
+            {:get, caller} ->
+              send(caller, {:ok, state.value})
+              %Actor{state | mailbox: new_mailbox}
+
+            {:set, new_value} ->
+              %Actor{state | value: new_value, mailbox: new_mailbox}
+
+            {:send, msg} ->
+              case msg do
+                {op, x} when op in @ops ->
+                  %Actor{
+                    state
+                    | value: do_arithmetic(state.value, op, x),
+                      mailbox: new_mailbox
+                  }
+
+                _ ->
+                  {:error, "unknown message"}
+              end
+
+            {:error, reason} ->
+              IO.inspect("Error: #{reason}")
+              %Actor{state | mailbox: new_mailbox}
+
+            :process_mailbox ->
+              handle_message(%Actor{state | mailbox: new_mailbox})
+
+            _ ->
+              {:error, "unknown message"}
+              %Actor{state | mailbox: new_mailbox}
+          end
+
+        new_state
     end
   end
 
-  @spec set(pid :: pid, new_state :: integer) :: integer
-  def set(pid, new_state) do
-    pid |> send({:set, self(), new_state})
+  # TODO 현재 `{:ok, {:error, "divided to zero"}}`를 반환하고 있음.
+  #      이를 `{:error, "divided to zero"}`로 변경해야 함.
+  defp do_arithmetic(_, :div, 0), do: {:error, "divided to zero"}
 
-    receive do
-      state -> state
+  defp do_arithmetic(value, op, x) when is_integer(x) do
+    case op do
+      :add -> value + x
+      :sub -> value - x
+      :mul -> value * x
+      :div -> value / x
     end
   end
 
-  def subscribers(pid) do
-    state = Process.get(pid, :state)
-    state[:subscribers]
-  end
-
-  defp is_empty_mailbox?(state) do
-    state[:mailbox] |> :queue.is_empty()
-  end
-
-  defp has_subscribers?(state) do
-    state[:subscribers] |> MapSet.size() != 0
-  end
-
-  defp propagate_message(state, value) do
-    Enum.each(state[:subscribers], fn pid ->
-      send(pid, value)
-    end)
-    loop(state)
-  end
-
-  defp should_broadcast(state, value) do
-    if has_subscribers?(state) do
-      propagate_message(state, value)
-    else
-      msg = :queue.in(value, state[:mailbox])
-      loop(%{state | mailbox: msg})
-    end
-  end
-
-  defp check_message(state) do
-    if !is_empty_mailbox?(state) do
-      {msg, new_mailbox} = :queue.out(state[:mailbox])
-      send(self(), {:message, msg})
-      loop(%{state | mailbox: new_mailbox})
-    else
-      loop(state)
-    end
+  defp store_message(state, message) do
+    new_mailbox = :queue.in(message, state.mailbox)
+    %__MODULE__{state | mailbox: new_mailbox}
   end
 end

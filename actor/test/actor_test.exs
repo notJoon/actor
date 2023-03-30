@@ -1,43 +1,23 @@
 defmodule ActorTest do
   use ExUnit.Case
+  import Actor
 
-  test "generate new actor" do
-    assert Actor.new(0) |> is_pid()
-  end
+  test "processing messages in batch when queue reaches batch size" do
+    value = 20
+    batch_size = 3
+    pid = new(value: value, batch_size: batch_size)
 
-  test "generate new actor and get its state value" do
-    pid_1 = Actor.new(0)
-    pid_2 = Actor.new(42)
+    send(pid, {:set, 30})
+    send(pid, {:get, self()})
+    send(pid, {:send, {:add, 10}})
 
-    assert Actor.get(pid_1) == 0
-    assert Actor.get(pid_2) == 42
-  end
+    :timer.sleep(100)
 
-  test "update actor state" do
-    pid = Actor.new(0)
+    refute_receive {:result, _}, 1000
 
-    assert Actor.get(pid) == 0
+    send(pid, {:get, self()})
 
-    Actor.set(pid, 42)
-
-    assert Actor.get(pid) == 42
-  end
-
-  @tag :skip
-  test "broadcast message to all subscribers when receive a message" do
-    pid = Actor.new(0)
-
-    sub1 = spawn_link(fn -> receive do _ -> end end)
-    sub2 = spawn_link(fn -> receive do _ -> end end)
-
-    send(pid, {:subscribe, sub1})
-    send(pid, {:subscribe, sub2})
-
-    send(pid, {:message, 42})
-
-    Process.sleep(1000)
-
-    assert_receive 42
-    assert_receive 42
+    assert_receive {:result, result}, 3000
+    assert result == 40
   end
 end
