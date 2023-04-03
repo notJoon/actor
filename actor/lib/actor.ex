@@ -1,97 +1,72 @@
 defmodule Actor do
-  defstruct value: nil, mailbox: :queue.new(), subscribers: MapSet.new()
+
+  @moduledoc """
+  A simple actor that can perform arithmetic operations on a value.
+  """
+  use GenServer
 
   @ops [:add, :sub, :mul, :div]
-  @batch 5
 
-  def new(args, batch_size \\ @batch) do
-    init_state = %__MODULE__{value: args[:value]}
-    spawn_link(fn -> loop(self(), init_state, batch_size) end)
+  # Client API
+
+  @spec start_link(value: integer) :: GenServer.on_start()
+  def start_link(args) do
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  def get(pid) do
-    pid.value
+  @spec get() :: integer()
+  def get() do
+    GenServer.call(__MODULE__, :get)
   end
 
-  def set(pid, new_value) do
-    %Actor{pid | value: new_value}
+  @spec set(integer()) :: :ok
+  def set(value) do
+    GenServer.cast(__MODULE__, {:set, value})
   end
 
-  def loop(pid, state, batch_size) do
-    new_state =
-      receive do
-        message ->
-          stored_state = store_message(state, message)
-
-          if :queue.len(stored_state.mailbox) >= batch_size do
-            Process.send(pid, :process_mailbox, [])
-          end
-
-          stored_state
-      end
-
-    loop(pid, new_state, batch_size)
+  @spec send({atom(), integer()}) :: :ok
+  def send(msg) do
+    GenServer.cast(__MODULE__, {:send, msg})
   end
 
-  def handle_message(state) do
-    case :queue.out(state.mailbox) do
-      {:empty, _} ->
+  # Server API
+
+  def init(args) do
+    {:ok, args[:value]}
+  end
+
+  def handle_call(:get, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_cast({:set, new_value}, _state) do
+    {:noreply, new_value}
+  end
+
+  def handle_cast({:send, msg}, state) do
+    new_state = case msg do
+      {op, x} when op in @ops ->
+        do_arithmetic(state, op, x)
+
+      _ ->
         state
-
-      {{:value, message}, new_mailbox} ->
-        new_state =
-          case message do
-            {:get, caller} ->
-              send(caller, {:ok, state.value})
-              %Actor{state | mailbox: new_mailbox}
-
-            {:set, new_value} ->
-              %Actor{state | value: new_value, mailbox: new_mailbox}
-
-            {:send, msg} ->
-              case msg do
-                {op, x} when op in @ops ->
-                  %Actor{
-                    state
-                    | value: do_arithmetic(state.value, op, x),
-                      mailbox: new_mailbox
-                  }
-
-                _ ->
-                  {:error, "unknown message"}
-              end
-
-            {:error, reason} ->
-              IO.inspect("Error: #{reason}")
-              %Actor{state | mailbox: new_mailbox}
-
-            :process_mailbox ->
-              handle_message(%Actor{state | mailbox: new_mailbox})
-
-            _ ->
-              {:error, "unknown message"}
-              %Actor{state | mailbox: new_mailbox}
-          end
-
-        new_state
     end
+
+    {:noreply, new_state}
   end
 
-  # TODO 현재 `{:ok, {:error, "divided to zero"}}`를 반환하고 있음.
-  #      이를 `{:error, "divided to zero"}`로 변경해야 함.
-  defp do_arithmetic(_, :div, 0), do: {:error, "divided to zero"}
+  def handle_cast(_, state) do
+    {:noreply, state}
+  end
 
-  defp do_arithmetic(value, op, x) when is_integer(x) do
+  defp do_arithmetic(state, op, x) when is_integer(x) do
     case op do
-      :add -> value + x
-      :sub -> value - x
-      :mul -> value * x
-      :div -> value / x
+      :add -> state + x
+      :sub -> state - x
+      :mul -> state * x
+      :div -> state / x
     end
   end
 
-  defp store_message(state, message) do
-    new_mailbox = :queue.in(message, state.mailbox)
-    %__MODULE__{state | mailbox: new_mailbox}
-  end
+  defp do_arithmetic(_, :div, 0), do: raise "Division by zero"
 end

@@ -1,23 +1,38 @@
 defmodule ActorTest do
-  use ExUnit.Case
-  import Actor
+  use ExUnit.Case, async: true
+  alias Actor
 
-  test "processing messages in batch when queue reaches batch size" do
-    value = 20
-    batch_size = 3
-    pid = new(value: value, batch_size: batch_size)
+  setup do
+    {:ok, pid} = Actor.start_link(value: 20)
+    {:ok, %{pid: pid}}
+  end
 
-    send(pid, {:set, 30})
-    send(pid, {:get, self()})
-    send(pid, {:send, {:add, 10}})
+  test "initial value should be 20", %{pid: pid} do
+    assert Actor.get() == 20
+  end
 
-    :timer.sleep(100)
+  test "set should update the value", %{pid: pid} do
+    Actor.set(20)
+    assert Actor.get() == 20
+  end
 
-    refute_receive {:result, _}, 1000
+  test "add operation and update actor's value", %{pid: pid} do
+    Actor.send({:add, 10})
+    assert Actor.get() == 30
+  end
 
-    send(pid, {:get, self()})
+  test "sub operation and update actor's value", %{pid: pid} do
+    Actor.send({:sub, 10})
+    assert Actor.get() == 10
+  end
 
-    assert_receive {:result, result}, 3000
-    assert result == 40
+  test "mul operation and update actor's value", %{pid: pid} do
+    Actor.send({:mul, 10})
+    assert Actor.get() == 200
+  end
+
+  test "div operation and update actor's value", %{pid: pid} do
+    Actor.send({:div, 10})
+    assert Actor.get() == 2
   end
 end
