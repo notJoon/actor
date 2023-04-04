@@ -9,24 +9,36 @@ defmodule Actor do
 
   # Client API
 
-  @spec start_link(value: integer) :: GenServer.on_start()
+  @spec start_link(value: number, name: any) :: GenServer.on_start()
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+    GenServer.start_link(__MODULE__, args, name: {:via, :gproc, {:n, :l, args[:name]}})
   end
 
-  @spec get() :: integer()
-  def get() do
-    GenServer.call(__MODULE__, :get)
+  @spec get(pid()) :: number()
+  def get(pid) do
+    GenServer.call(pid, :get)
   end
 
-  @spec set(integer()) :: :ok
-  def set(value) do
-    GenServer.cast(__MODULE__, {:set, value})
+  @spec set(pid(), number()) :: :ok
+  def set(pid, value) do
+    GenServer.cast(pid, {:set, value})
   end
 
-  @spec send({atom(), integer()}) :: :ok
-  def send(msg) do
-    GenServer.cast(__MODULE__, {:send, msg})
+  @spec send_message(pid(), {atom(), number()}) :: :ok
+  def send_message(pid, msg) do
+    GenServer.cast(pid, {:send_message, msg})
+  end
+
+  @spec send_to(atom(), {atom(), number()}) :: :ok | {:error, :not_found}
+  def send_to(name, msg) do
+    case :gproc.whereis_name({:n, :l, name}) do
+      nil ->
+        {:error, :not_found}
+
+      pid ->
+        send_message(pid, msg)
+        :ok
+    end
   end
 
   # Server API
@@ -43,7 +55,7 @@ defmodule Actor do
     {:noreply, new_value}
   end
 
-  def handle_cast({:send, msg}, state) do
+  def handle_cast({:send_message, msg}, state) do
     new_state = case msg do
       {op, x} when op in @ops ->
         do_arithmetic(state, op, x)
@@ -59,12 +71,12 @@ defmodule Actor do
     {:noreply, state}
   end
 
-  defp do_arithmetic(state, op, x) when is_integer(x) do
+  defp do_arithmetic(state, op, x) when is_number(x) do
     case op do
       :add -> state + x
       :sub -> state - x
       :mul -> state * x
-      :div -> state / x
+      :div -> trunc(state / x)
     end
   end
 
