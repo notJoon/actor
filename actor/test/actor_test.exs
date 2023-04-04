@@ -1,38 +1,21 @@
 defmodule ActorTest do
-  use ExUnit.Case, async: true
-  alias Actor
+  use ExUnit.Case
+  alias Actor, as: Actor
 
-  setup do
-    {:ok, pid} = Actor.start_link(value: 20)
-    {:ok, %{pid: pid}}
-  end
+  test "actor messaging" do
+    {:ok, actor1} = Actor.start_link(value: 0, name: :actor1)
+    {:ok, actor2} = Actor.start_link(value: 0, name: :actor2)
 
-  test "initial value should be 20", %{pid: pid} do
-    assert Actor.get() == 20
-  end
+    Actor.set(actor1, 5)
+    assert Actor.get(actor1) == 5
 
-  test "set should update the value", %{pid: pid} do
-    Actor.set(20)
-    assert Actor.get() == 20
-  end
+    Actor.send_message(actor1, {:add, 5})
+    assert Actor.get(actor1) == 10
 
-  test "add operation and update actor's value", %{pid: pid} do
-    Actor.send({:add, 10})
-    assert Actor.get() == 30
-  end
+    Actor.send_to(:actor1, {:sub, 5})
+    assert Actor.get(actor1) == 5
 
-  test "sub operation and update actor's value", %{pid: pid} do
-    Actor.send({:sub, 10})
-    assert Actor.get() == 10
-  end
-
-  test "mul operation and update actor's value", %{pid: pid} do
-    Actor.send({:mul, 10})
-    assert Actor.get() == 200
-  end
-
-  test "div operation and update actor's value", %{pid: pid} do
-    Actor.send({:div, 10})
-    assert Actor.get() == 2
+    Actor.send_to(:actor2, {:mul, 2})
+    assert Actor.get(actor2) == 0
   end
 end
